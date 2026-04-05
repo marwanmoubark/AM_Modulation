@@ -91,13 +91,36 @@ for i = 1 : 4
 
     %% ======================== Listen & Plot ============================
     figure('Name', Titles{i}, 'NumberTitle', 'off'); % Dynamic Window Title
+    
+    % Setup frequency axis for all plots
     N   = length(m_recovered);
     f   = (-N/2 : N/2-1) * (Fs/N);
+    
+    % 1. Plot RF Stage Output (Centered at 100 kHz)
+    subplot(3,1,1);
+    plot(f, abs(fftshift(fft(S_RF)))/N, 'b', 'LineWidth', 1.2);
+    xlabel('Frequency (Hz)'); ylabel('Magnitude');
+    title(['RF Stage Output - ', Titles{i}]);
+    xlim([-150000 150000]); % Zoomed out to see the 100kHz and 130kHz carriers
+    grid on;
+
+    % 2. Plot IF Stage Output (Centered at 15 kHz)
+    subplot(3,1,2);
+    plot(f, abs(fftshift(fft(S_IF)))/N, 'r', 'LineWidth', 1.2);
+    xlabel('Frequency (Hz)'); ylabel('Magnitude');
+    title(['IF Stage Output - ', Titles{i}]);
+    xlim([-30000 30000]); % Zoomed in to see the 15kHz IF signal
+    grid on;
+
+    % 3. Plot Baseband Output (Centered at 0 Hz)
+    subplot(3,1,3);
     plot(f, abs(fftshift(fft(m_recovered)))/N, 'g', 'LineWidth', 1.2);
     xlabel('Frequency (Hz)'); ylabel('Magnitude');
-    title(Titles{i});  % Dynamic Graph Title
-    xlim([-15000 15000]); grid on;
+    title(['Baseband Output - ', Titles{i}]);
+    xlim([-15000 15000]); % Zoomed in to see the baseband audio
+    grid on;
     
+    % Audio Playback
     Fs_play     = 44100;                            
     m_play      = m_recovered(1:upsample_factor:end); 
     
@@ -105,6 +128,5 @@ for i = 1 : 4
     sound(m_play, Fs_play);
     
     % Pause so the audio files don't play over each other!
-    % Pauses for the length of the audio file + 1 second
-    pause(length(m_play)/Fs_play + 1); 
+    pause(length(m_play)/Fs_play + 1);
 end
