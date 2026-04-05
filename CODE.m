@@ -41,46 +41,41 @@ Fc_2 = 130000;
 Bw_1 = 5000;                                    
 Bw_2 = 5000;                                    
 t    = (0 : max_length-1) * Ts;                 
-S1_t = m_t' .* cos(2*pi*Fc_1*t);            
+S1_t = m_t' .* cos(2*pi*Fc_1*t);               
 S2_t = a_t' .* cos(2*pi*Fc_2*t);               
 S_t  = S1_t + S2_t;                             
 %% ====================== initializing the loop ==========================
 Freq_offset_LIST = [0, 0, 100, 1000];
-% Create a list of titles for the professor to see what's happening
 Titles = {'1. Ideal Receiver', '2. No RF Stage (Image Interference)', ...
           '3. Freq Offset (0.1 kHz)', '4. Freq Offset (1 kHz)'};
 for i = 1 : 4
     Freq_offset = Freq_offset_LIST(i);
     
-    %% ======================== RF Stage =====================================
+    %% ======================== RF Stage =================================
     Fc_desired  = Fc_1;                             
     Bw_desired  = Bw_1;
     fpass_RF    = [Fc_desired - Bw_desired, Fc_desired + Bw_desired];        
     
-    if i ~= 2  
+    if i ~= 2  % If it's NOT the 2nd iteration, use the filter
         S_RF = bandpass(S_t, fpass_RF, Fs);  
-    else       
+    else       % If it IS the 2nd iteration, BYPASS the filter
         S_RF = S_t; 
     end
-
-    %% ======================== Mixer ========================================
+    %% ======================== Mixer ====================================
     F_IF        = 15000;                            
-    F_osc       = Fc_desired + F_IF + Freq_offset;               
+    F_osc       = Fc_desired + F_IF + Freq_offset;  % Offset applied here!             
     S_mixed     = S_RF .* cos(2*pi*F_osc*t);       
-
-    %% ======================== IF Stage =====================================
+    %% ======================== IF Stage ==================================
     fpass_IF    = [F_IF - Bw_desired, F_IF + Bw_desired];              
     S_IF        = bandpass(S_mixed, fpass_IF, Fs); 
-
-    %% ======================== Baseband Detection ===========================
+    %% ======================== Baseband Detection =======================
     % Multiply by 2 here to fix the amplitude drop!
     S_BB        = S_IF .* (2 * cos(2*pi*F_IF*t));        
     
     d_lpf       = fdesign.lowpass('N,F3dB', 6, Bw_desired/(Fs/2));
     hLPF        = design(d_lpf, 'butter');          
     m_recovered = filter(hLPF, S_BB);              
-
-    %% ======================== Listen & Plot ================================
+    %% ======================== Listen & Plot ============================
     figure('Name', Titles{i}, 'NumberTitle', 'off'); % Dynamic Window Title
     
     % Setup frequency axis for all plots
@@ -117,6 +112,5 @@ for i = 1 : 4
     sound(m_play, Fs_play);
     
     % Pause so the audio files don't play over each other!
-    % Pauses for the length of the audio file + 1 second
-    pause(length(m_play)/Fs_play + 1); 
+    pause(length(m_play)/Fs_play + 1);
 end
