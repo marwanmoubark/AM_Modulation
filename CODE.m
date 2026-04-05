@@ -10,8 +10,6 @@ m_t = y_t(:,1) + y_t(:,2);                     % Stereo → Mono
 a_t = z_t(:,1) + z_t(:,2);                     % Stereo → Mono
 
 Fs = max(Fs1, Fs2);                             % Use higher sampling rate
-Ts = 1/Fs;
-
 clear y_t z_t Fs1 Fs2;
 
 %% ====================== Zero Padding ===================================
@@ -45,60 +43,68 @@ plot(f2(1:floor(N2/2)), abs(fft(a_t(1:floor(N2/2))))/N2, 'r', 'LineWidth', 1.2);
 xlabel('Frequency (Hz)'); ylabel('Magnitude');
 title(sprintf('FM 90.90 - Baseband Spectrum (Fs = %d Hz)', Fs));
 xlim([0 10000]); grid on;
-
 %% ======================== AM Modulator (DSB-SC) ========================
-Fc_1 = 100000;                                  % Station 1: 100 kHz
-Fc_2 = 130000;                                  % Station 2: 130 kHz
-Bw_1 = 5000;                                    % Baseband BW station 1
-Bw_2 = 5000;                                    % Baseband BW station 2
+Fc_1 = 100000;                                  
+Fc_2 = 130000;                                  
+Bw_1 = 5000;                                    
+Bw_2 = 5000;                                    
+t    = (0 : max_length-1) * Ts;                 
+S1_t = m_t' .* cos(2*pi*Fc_1*t);               
+S2_t = a_t' .* cos(2*pi*Fc_2*t);               
+S_t  = S1_t + S2_t;                             
 
+%% ====================== initializing the loop ==========================
+Freq_offset_LIST = [0, 0, 100, 1000];
+Titles = {'1. Ideal Receiver', '2. No RF Stage (Image Interference)', ...
+          '3. Freq Offset (0.1 kHz)', '4. Freq Offset (1 kHz)'};
 
-t    = (0 : max_length-1) * Ts;                 % Time vector
+for i = 1 : 4
+    Freq_offset = Freq_offset_LIST(i);
+    
+    %% ======================== RF Stage =================================
+    Fc_desired  = Fc_1;                             
+    Bw_desired  = Bw_1;
+    fpass_RF    = [Fc_desired - Bw_desired, Fc_desired + Bw_desired];        
+    
+    if i ~= 2  % If it's NOT the 2nd iteration, use the filter
+        S_RF = bandpass(S_t, fpass_RF, Fs);  
+    else       % If it IS the 2nd iteration, BYPASS the filter
+        S_RF = S_t; 
+    end
 
-S1_t = m_t' .* cos(2*pi*Fc_1*t);               % DSB-SC: BBC @ 100 kHz
-S2_t = a_t' .* cos(2*pi*Fc_2*t);               % DSB-SC: FM  @ 130 kHz
-S_t  = S1_t + S2_t;                             % FDM composite signal
+    %% ======================== Mixer ====================================
+    F_IF        = 15000;                            
+    F_osc       = Fc_desired + F_IF + Freq_offset;  % Offset applied here!             
+    S_mixed     = S_RF .* cos(2*pi*F_osc*t);       
 
-%% ======================== RF Stage =====================================
-Fc_desired  = Fc_2;                             % Tune to Station 1
-Bw_desired  = Bw_2;
+    %% ======================== IF Stage ==================================
+    fpass_IF    = [F_IF - Bw_desired, F_IF + Bw_desired];              
+    S_IF        = bandpass(S_mixed, fpass_IF, Fs); 
 
-fpass_RF    = [Fc_desired - Bw_desired, ...
-               Fc_desired + Bw_desired];        % [92000, 108000] Hz
-S_RF        = bandpass(S_t, fpass_RF, Fs);      % RF filtered signal
+    %% ======================== Baseband Detection =======================
+    % Multiply by 2 here to fix the amplitude drop!
+    S_BB        = S_IF .* (2 * cos(2*pi*F_IF*t));        
+    
+    d_lpf       = fdesign.lowpass('N,F3dB', 6, Bw_desired/(Fs/2));
+    hLPF        = design(d_lpf, 'butter');          
+    m_recovered = filter(hLPF, S_BB);              
 
-%% ======================== Mixer ========================================
-F_IF        = 15000;                            % IF frequency: 15 kHz
-F_osc       = Fc_desired + F_IF;               % Oscillator: 115 kHz
-S_mixed     = S_RF .* cos(2*pi*F_osc*t);       % Shift 100kHz → 15kHz
-
-%% ======================== IF Stage =====================================
-fpass_IF    = [F_IF - Bw_desired, ...
-               F_IF + Bw_desired];              % [7000, 23000] Hz
-S_IF        = bandpass(S_mixed, fpass_IF, Fs); % ← FIXED: was fpass, now fpass_IF
-
-%% ======================== Baseband Detection ===========================
-S_BB        = S_IF .* cos(2*pi*F_IF*t);        % Shift 15kHz → 0Hz
-
-d_lpf       = fdesign.lowpass(    ...
-    'N,F3dB'          ,           ...           % Spec: order + 3dB cutoff
-    6                 ,           ...           % Filter order
-    Bw_desired/(Fs/2)             );            % Normalized cutoff
-
-hLPF        = design(d_lpf, 'butter');          % Butterworth LPF
-m_recovered = filter(hLPF, S_BB);              % Recovered message
-
-%% ======================== Listen & Plot ================================
-% Downsample to playable rate before sound()
-Fs_play     = 44100;                            % Standard audio rate
-m_play      = m_recovered(1:upsample_factor:end); % Decimate by 10
-sound(m_play, Fs_play);                         % Play recovered audio
-
-% Plot recovered signal spectrum
-figure('Name','Recovered Signal','NumberTitle','off');
-N   = length(m_recovered);
-f   = (-N/2 : N/2-1) * (Fs/N);
-plot(f, abs(fftshift(fft(m_recovered)))/N, 'g', 'LineWidth', 1.2);
-xlabel('Frequency (Hz)'); ylabel('Magnitude');
-title('Recovered Baseband Signal - BBC Arabic');
-xlim([-15000 15000]); grid on;
+    %% ======================== Listen & Plot ============================
+    figure('Name', Titles{i}, 'NumberTitle', 'off'); % Dynamic Window Title
+    N   = length(m_recovered);
+    f   = (-N/2 : N/2-1) * (Fs/N);
+    plot(f, abs(fftshift(fft(m_recovered)))/N, 'g', 'LineWidth', 1.2);
+    xlabel('Frequency (Hz)'); ylabel('Magnitude');
+    title(Titles{i});  % Dynamic Graph Title
+    xlim([-15000 15000]); grid on;
+    
+    Fs_play     = 44100;                            
+    m_play      = m_recovered(1:upsample_factor:end); 
+    
+    disp(['Playing: ', Titles{i}]);
+    sound(m_play, Fs_play);
+    
+    % Pause so the audio files don't play over each other!
+    % Pauses for the length of the audio file + 1 second
+    pause(length(m_play)/Fs_play + 1); 
+end
