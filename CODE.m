@@ -24,6 +24,7 @@ a_t        = interp(a_t, upsample_factor);
 Fs         = Fs * upsample_factor;              % 441000 Hz
 Ts         = 1/Fs;
 max_length = length(m_t);
+
 %% =============== Plot Signals in Frequency Domain ======================
 figure('Name','Frequency Domain - Messages','NumberTitle','off');
 
