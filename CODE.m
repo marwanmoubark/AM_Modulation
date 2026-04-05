@@ -54,7 +54,7 @@ S_mixed     = modulated_signal_RF .* cos(2*pi*F_lo*t);         % Shift 100kHz �
 %% ======================== IF Stage =====================================
 fpass_IF            = [F_IF - Bw_desired, ...
                        F_IF + Bw_desired];              % [7000, 23000] Hz
-modulated_signal_IF = bandpass(S_mixed, fpass_IF, Fs); % ← FIXED: was fpass, now fpass_IF
+modulated_signal_IF = bandpass(S_mixed, fpass_IF, Fs);
 
 %% ======================== Baseband Detection ===========================
 S_BB        = modulated_signal_IF .* cos(2*pi*F_IF*t);        % Shift 15kHz → 0Hz
